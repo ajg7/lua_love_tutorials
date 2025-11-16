@@ -28,15 +28,13 @@ local FIXED_DT, MAX_ITERS = 1/120, 8
 local acc = 0
 
 -- ==== Component base ========================================================
--- Create a minimal component object with optional hooks:
--- - enabled: turn component on/off (default true)
--- - update(self, e, dt): per-physics-step behavior
--- - draw(self, e, alpha): per-render behavior (alpha = interpolation factor)
-local function newComponent(t)
-  t.enabled = (t.enabled ~= false)
-  t.update = t.update or function(self, e, dt) end
-  t.draw = t.draw or function(self, e, alpha) end
-  return t
+-- - update(self, entity, dt): per-physics-step behavior
+-- - draw(self, entity, alpha): per-render behavior (alpha = interpolation factor)
+local function newComponent(component)
+  component.enabled = (component.enabled ~= false)
+  component.update = component.update or function(self, entity, dt) end
+  component.draw = component.draw or function(self, entity, alpha) end
+  return component
 end
 
 -- ==== Example components ====================================================
@@ -46,16 +44,16 @@ end
 -- that other components (e.g., Bouncer) can change direction. This demo keeps
 -- velocity on the component to stay simple; see comments in Bouncer below.
 local Mover = {}
-function Mover.new(vx, vy)
+function Mover.new(velocityX, velocityY)
   return newComponent({
-    vx = vx or 0,
-    vy = vy or 0,
-    update = function(self, e, dt)
+    vx = velocityX or 0,
+    vy = velocityY or 0,
+    update = function(self, entity, dt)
       -- Store previous position for render interpolation
-      e.px, e.py = e.x, e.y
+      entity.px, entity.py = entity.x, entity.y
       -- Advance using the component’s velocity
-      e.x = e.x + self.vx * dt
-      e.y = e.y + self.vy * dt
+      entity.x = entity.x + self.vx * dt
+      entity.y = entity.y + self.vy * dt
     end
   })
 end
@@ -68,12 +66,12 @@ local Bouncer = {}
 function Bouncer.new(margin)
   return newComponent({
     margin = margin or 0,
-    update = function(self, e, dt)
-      local W, H = love.graphics.getWidth(), love.graphics.getHeight()
-      if e.x < self.margin then e.x = self.margin; e.vx = math.abs(e.vx) end
-      if e.x + e.w > W - self.margin then e.x = W - self.margin - e.w; e.vx = -math.abs(e.vx) end
-      if e.y < self.margin then e.y = self.margin; e.vy = math.abs(e.vy) end
-      if e.y + e.h > H - self.margin then e.y = H - self.margin - e.h; e.vy = -math.abs(e.vy) end
+    update = function(self, entity, dt)
+      local windowWidth, windowHeight = love.graphics.getWidth(), love.graphics.getHeight()
+      if entity.x < self.margin then entity.x = self.margin; entity.vx = math.abs(entity.vx) end
+      if entity.x + entity.w > windowWidth - self.margin then entity.x = windowWidth - self.margin - entity.w; entity.vx = -math.abs(entity.vx) end
+      if entity.y < self.margin then entity.y = self.margin; entity.vy = math.abs(entity.vy) end
+      if entity.y + entity.h > windowHeight - self.margin then entity.y = windowHeight - self.margin - entity.h; entity.vy = -math.abs(entity.vy) end
     end
   })
 end
@@ -82,10 +80,10 @@ end
 local Velocity = {}
 function Velocity.new()
   return newComponent({
-    update = function(self, e, dt)
+    update = function(self, entity, dt)
       -- Expose velocity on entity for other components to use (e.g., Bouncer)
-      e.vx = e.vx or 0
-      e.vy = e.vy or 0
+      entity.vx = entity.vx or 0
+      entity.vy = entity.vy or 0
     end
   })
 end
@@ -96,11 +94,11 @@ local Renderer = {}
 function Renderer.new(mode)
   return newComponent({
     mode = mode or "fill",
-    draw = function(self, e, a)
+    draw = function(self, entity, alpha)
       -- Interpolated position between last physics state (px/py) and current
-      local rx = e.px + (e.x - e.px) * a
-      local ry = e.py + (e.y - e.py) * a
-      love.graphics.rectangle(self.mode, rx, ry, e.w, e.h)
+      local renderX = entity.px + (entity.x - entity.px) * alpha
+      local renderY = entity.py + (entity.y - entity.py) * alpha
+      love.graphics.rectangle(self.mode, renderX, renderY, entity.w, entity.h)
     end
   })
 end
@@ -109,21 +107,21 @@ end
 local Blink = {}
 function Blink.new(period)
   return newComponent({
-    t = 0,
+    elapsedTime = 0,
     period = period or 0.5,
     on = true,
-    update = function(self, e, dt)
-      self.t = self.t + dt
-      if self.t >= self.period then
-        self.t = 0
+    update = function(self, entity, dt)
+      self.elapsedTime = self.elapsedTime + dt
+      if self.elapsedTime >= self.period then
+        self.elapsedTime = 0
         self.on = not self.on
       end
     end,
-    draw = function(self, e, a)
+    draw = function(self, entity, alpha)
       if self.on then
-        local rx = e.px + (e.x - e.px) * a
-        local ry = e.py + (e.y - e.py) * a
-        love.graphics.rectangle("line", rx - 2, ry - 2, e.w + 4, e.h + 4)
+        local renderX = entity.px + (entity.x - entity.px) * alpha
+        local renderY = entity.py + (entity.y - entity.py) * alpha
+        love.graphics.rectangle("line", renderX - 2, renderY - 2, entity.w + 4, entity.h + 4)
       end
     end
   })
@@ -138,29 +136,29 @@ end
 --   comps array of components (objects with update/draw)
 --   active whether to update
 --   vx, vy optional velocity stored on the entity (used by Bouncer, etc.)
-local function newEntity(x, y, w, h, comps)
-  local e = {
+local function newEntity(x, y, width, height, components)
+  local entity = {
     x = x, y = y,
     px = x, py = y,
-    w = w or 32, h = h or 32,
-    comps = comps or {},
+    w = width or 32, h = height or 32,
+    comps = components or {},
     active = true,
     vx = 120, vy = 80,
   }
-  function e:add(c)
-    table.insert(self.comps, c)
+  function entity:add(component)
+    table.insert(self.comps, component)
   end
-  function e:update(dt)
-    for _, c in ipairs(self.comps) do
-      if c.enabled and c.update then c:update(self, dt) end
+  function entity:update(dt)
+    for _, component in ipairs(self.comps) do
+      if component.enabled and component.update then component:update(self, dt) end
     end
   end
-  function e:draw(a)
-    for _, c in ipairs(self.comps) do
-      if c.enabled and c.draw then c:draw(self, a) end
+  function entity:draw(alpha)
+    for _, component in ipairs(self.comps) do
+      if component.enabled and component.draw then component:draw(self, alpha) end
     end
   end
-  return e
+  return entity
 end
 
 -- ==== World / fixed update ==================================================
@@ -168,8 +166,8 @@ local entities = {}
 
 -- Run one fixed-duration physics step for all active entities.
 local function fixedUpdate()
-  for _, e in ipairs(entities) do
-    if e.active then e:update(FIXED_DT) end
+  for _, entity in ipairs(entities) do
+    if entity.active then entity:update(FIXED_DT) end
   end
 end
 
@@ -204,25 +202,25 @@ function love.update(dt)
   acc = acc + dt
 
   -- Consume accumulator in fixed-size steps.
-  local it = 0
-  while acc >= FIXED_DT and it < MAX_ITERS do
+  local iterations = 0
+  while acc >= FIXED_DT and iterations < MAX_ITERS do
     fixedUpdate()
     acc = acc - FIXED_DT
-    it = it + 1
+    iterations = iterations + 1
   end
 
   -- If we hit the iteration cap, drop any excess time to keep the game
   -- responsive. This trades some accuracy for stability under heavy load.
-  if it == MAX_ITERS then acc = 0 end
+  if iterations == MAX_ITERS then acc = 0 end
 end
 
 function love.draw()
   -- Interpolation factor in [0..1]: how far we are to the next physics tick.
-  local a = acc / FIXED_DT
-  if a > 1 then a = 1 end
+  local alpha = acc / FIXED_DT
+  if alpha > 1 then alpha = 1 end
 
   love.graphics.setColor(1, 1, 1)
-  for _, e in ipairs(entities) do e:draw(a) end
+  for _, entity in ipairs(entities) do entity:draw(alpha) end
 
   -- Heads-up display
   love.graphics.print("Components: Velocity, Mover, Bouncer, Renderer, Blink", 10, 10)
@@ -235,8 +233,8 @@ end
 function love.keypressed(k)
   if k == "1" then
     -- Toggle the last component on the first entity (Blink)
-    local c = entities[1].comps[#entities[1].comps]
-    c.enabled = not c.enabled
+    local blinkComponent = entities[1].comps[#entities[1].comps]
+    blinkComponent.enabled = not blinkComponent.enabled
   elseif k == "escape" then
     love.event.quit()
   end

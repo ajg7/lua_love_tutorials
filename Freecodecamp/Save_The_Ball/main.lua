@@ -1,6 +1,6 @@
 local love = require "love"
 local Enemy = require "Enemy"
-local Button = require "Button"
+local Button = require "Freecodecamp.Asteroids.ui.components.Button"
 
 math.randomseed(os.time())
 

@@ -90,6 +90,22 @@ function Player(debugging)
 
       self.x = self.x + self.thrust.x
       self.y = self.y + self.thrust.y
+
+      local w = love.graphics.getWidth()
+      local h = love.graphics.getHeight()
+      -- Keep the entire ship (and thrust flame) on-screen.
+      local margin = self.radius * 2
+      if self.x < margin then
+        self.x = margin
+      elseif self.x > (w - margin) then
+        self.x = (w - margin)
+      end
+
+      if self.y < margin then
+        self.y = margin
+      elseif self.y > (h - margin) then
+        self.y = (h - margin)
+      end
     end
   }
 end

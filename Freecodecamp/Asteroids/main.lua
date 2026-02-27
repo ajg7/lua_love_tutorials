@@ -4,6 +4,7 @@ local Player = require "Player"
 local Laser = require "Laser"
 local Asteroid = require "Asteroid"
 local PointsManager = require "managers.PointsManager"
+local AudioManager = require "managers.AudioManager"
 local Game = require "states.Game"
 local Menu = require "states.Menu"
 local GameOver = require "states.GameOver"
@@ -49,6 +50,10 @@ function love.load()
   mouse_x, mouse_y = 0, 0
 
   show_debugging = false
+
+  audio = AudioManager()
+  audio:load()
+  audio:playBackground()
 
   game = Game()
   game:changeGameState("menu")
@@ -127,10 +132,18 @@ function fireLaser()
 
   lasers[#lasers + 1] = Laser(nose_x, nose_y, player.angle)
   laserCooldown = 0.18
+
+  if audio then
+    audio:playLaser()
+  end
 end
 
 function love.update(dt)
   mouse_x, mouse_y = love.mouse.getPosition()
+
+  if audio then
+    audio:update()
+  end
 
   if game.state.menu then
     menu:update(mouse_x, mouse_y)
@@ -190,6 +203,11 @@ function love.update(dt)
 
           if dist2(laser.x, laser.y, asteroid.x, asteroid.y) <= asteroid.radius * asteroid.radius then
             points:awardForAsteroid(asteroid.size)
+
+            if audio then
+              audio:playExplosion()
+            end
+
             local children = asteroid:split()
             table.remove(asteroids, ai)
             for _, child in ipairs(children) do
